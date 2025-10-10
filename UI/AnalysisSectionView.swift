@@ -99,7 +99,7 @@ private struct SimilarCard: View {
             Spacer()
 
             Button(action: { onAnalyze?(item) }) {
-                Text("分析音樂")
+                Text("推薦音樂")
                     .font(.subheadline).bold()
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(theme.c.accentColor)

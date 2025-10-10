@@ -240,7 +240,7 @@ struct ContentView: View {
     // MARK: - Preview tab
     private var previewView: some View {
         VStack(spacing: 16) {
-            Text("PicTunes：預覽（\(domainTitle)）")
+            Text("PicTunes：合成（\(domainTitle)）")
                 .font(.title).bold()
                 .foregroundStyle(theme.c.pageTitleColor)
                 .padding(.top)
