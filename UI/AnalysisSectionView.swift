@@ -25,7 +25,7 @@ struct AnalysisSectionView: View {
                     .padding(.horizontal)
             }
 
-            Text("圖片分析結果")
+            Text("圖片辨認結果")
                 .font(.title3).bold()
                 .foregroundColor(.black)
                 .padding(.horizontal)
