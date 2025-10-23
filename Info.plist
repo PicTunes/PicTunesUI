@@ -1,27 +1,91 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
-    <!-- 其他已有的键… -->
 
-    <!-- 允许 canOpenURL("instagram-stories://…") -->
-    <key>LSApplicationQueriesSchemes</key>
-    <array>
-        <string>instagram-stories</string>
-    </array>
+    <!-- =======================
+         Basic bundle settings
+         ======================= -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
 
-    <!-- 允许 HTTP（开发环境用） -->
+    <!-- Optional: minimal launch screen placeholder -->
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <!-- =======================
+         Network & API config
+         ======================= -->
+
+    <!-- Actual API base for requests (do NOT include /docs). -->
+    <key>PictunesAPIBaseURL</key>
+    <string>https://api.pictunes.me</string>
+
+    <!-- Docs URL kept for reference or UI display; not used for requests. -->
+    <key>PictunesAPIDocsURL</key>
+    <string>https://api.pictunes.me/docs</string>
+
+    <!-- App Transport Security:
+         - Production should avoid allowing arbitrary loads.
+         - HTTPS to api.pictunes.me needs no exception.
+         - Keep localhost HTTP exception for on-device/Simulator tests only. -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
-        <true/>
+        <false/>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>localhost</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
+                <key>NSIncludesSubdomains</key><true/>
+            </dict>
+            <!-- If you test via LAN IP (e.g., 192.168.x.x), add another block similarly. -->
+        </dict>
     </dict>
 
-    <!-- Facebook / Instagram Stories 分享必须的 App ID -->
+    <!-- =======================
+         Privacy permissions
+         ======================= -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>需要存取相簿以選取圖片或影片。</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>需要寫入相簿以儲存合成影片。</string>
+    <key>NSCameraUsageDescription</key>
+    <string>需要使用相機以拍攝素材。</string>
+
+    <!-- =======================
+         URL schemes / Instagram
+         ======================= -->
+
+    <!-- Allow canOpenURL("instagram-stories://") and "instagram://" checks -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>instagram-stories</string>
+        <string>instagram</string>
+    </array>
+
+    <!-- Facebook / Instagram Stories share requires Facebook App ID scheme -->
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
+            <!-- Optional: name this URL type -->
+            <key>CFBundleURLName</key>
+            <string>facebook-app</string>
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>fb1377558706877252</string>
@@ -33,6 +97,26 @@
     <key>FacebookDisplayName</key>
     <string>Pictunes</string>
 
-    <!-- 其他已有的键… -->
+    <!-- =======================
+         Scenes (kept minimal)
+         ======================= -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+
 </dict>
 </plist>
