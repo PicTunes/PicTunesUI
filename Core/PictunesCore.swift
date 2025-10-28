@@ -67,14 +67,11 @@ public final class PictunesService: ObservableObject {
     public enum Mode { case live, mock, autoFallback }
 
     public var enableConsoleLog: Bool = true
-    public var logRawUploadResponse: Bool = false   // 打開後會列印原始 JSON 片段，方便對照
-    
+    public var logRawUploadResponse: Bool = false
+
     public var publicImageRootPath: String = "/image"
-    // 保留一個備援，若未來仍有舊機制會回 /dataset
     public var alternativeStaticRootPath: String = "/dataset"
 
-
-    
     @Published public private(set) var debugState: PictunesDebugState = .idle {
         didSet { if enableConsoleLog { clog("STATE: \(debugSummary)") } }
     }
@@ -99,7 +96,7 @@ public final class PictunesService: ObservableObject {
 
     private let logger = Logger(subsystem: "me.pictunes.app", category: "network")
 
-    // Base URL：優先讀 Info.plist 的 PictunesAPIBaseURL，否則用預設
+    // Base URL：優先讀 Info.plist 的 PictunesAPIBaseURL，否則使用預設
     private static let defaultBaseURL = "https://api.pictunes.me"
     private var baseURL: URL = {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "PictunesAPIBaseURL") as? String,
@@ -109,13 +106,12 @@ public final class PictunesService: ObservableObject {
         return URL(string: defaultBaseURL)!
     }()
 
-    // Endpoints（不帶尾斜線）
+    // Endpoints
     private var uploadEndpoint: URL { baseURL.appendingPathComponent("upload") }
     private var mediaMergerEndpoint: URL { baseURL.appendingPathComponent("media_merger") }
     private var healthEndpoint: URL { baseURL.appendingPathComponent("health") }
     private var dbconCheckEndpoint: URL { baseURL.appendingPathComponent("dbcon_check") }
 
-    // URLSession：放寬逾時
     private lazy var urlSession: URLSession = {
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 60
@@ -212,38 +208,6 @@ public final class PictunesService: ObservableObject {
         }
     }
 
-    // MARK: - Media merger（公開）
-
-    public func generateVideo(image: UIImage,
-                              domain: RecommendationDomain,
-                              track: Music,
-                              completion: @escaping (Result<URL, Error>) -> Void) {
-        switch mode {
-        case .mock:
-            lastUsedMock = true
-            debugState = .requesting(endpoint: "/media_merger [mock]")
-            let mockURL = URL(string: "https://filesamples.com/samples/video/mp4/sample_960x400_ocean_with_audio.mp4")!
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self.debugState = .success(source: "mock", httpStatus: 200, detail: "Media merged")
-                completion(.success(mockURL))
-            }
-        case .live:
-            performLiveMediaMerger(image: image, domain: domain, track: track, fallbackToMock: false, completion: completion)
-        case .autoFallback:
-            performLiveMediaMerger(image: image, domain: domain, track: track, fallbackToMock: true, completion: completion)
-        }
-    }
-
-    // MARK: - Internal helpers
-
-    private func backendDomainString(_ domain: RecommendationDomain) -> String {
-        switch domain { case .anime: return "Anime"; case .film: return "Film" }
-    }
-    private func backendDomainLower(_ domain: RecommendationDomain) -> String {
-        switch domain { case .anime: return "anime"; case .film: return "film" }
-    }
-
-    // 影像上傳：先縮圖、再上傳；422 會做兩段重試；-1001 會縮更小再重送一次
     private func performLiveUpload(image: UIImage,
                                    domain: RecommendationDomain,
                                    fallbackToMock: Bool,
@@ -411,7 +375,6 @@ public final class PictunesService: ObservableObject {
         }.resume()
     }
 
-    // 422 的欄位別名重試；lowercase=false 送 Anime/Film；true 送 anime/film
     private func retryUploadWithAlternateFields(jpegData: Data,
                                                 domainValue: String,
                                                 lowercase: Bool,
@@ -491,17 +454,70 @@ public final class PictunesService: ObservableObject {
             }
         }.resume()
     }
+    // MARK: - Local video test helpers (frontend-only)
 
-    // Media merger：沿用新的逾時與縮圖策略
-    private func performLiveMediaMerger(image: UIImage,
-                                        domain: RecommendationDomain,
-                                        track: Music,
-                                        fallbackToMock: Bool,
-                                        completion: @escaping (Result<URL, Error>) -> Void) {
+    public func generateVideo(localFile url: URL,
+                              completion: @escaping (Result<URL, Error>) -> Void) {
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        guard exists else {
+            let err = NSError(domain: "PictunesService",
+                              code: -20,
+                              userInfo: [NSLocalizedDescriptionKey: "本機影片不存在：\(url.path)"])
+            DispatchQueue.main.async { completion(.failure(err)) }
+            return
+        }
+        DispatchQueue.main.async {
+            self.debugState = .success(source: "local", httpStatus: 200, detail: "use local mp4 for preview")
+            self.lastErrorMessage = nil
+            completion(.success(url))
+        }
+    }
+
+    public func generateVideoFromBundled(resource name: String,
+                                         withExtension ext: String = "mp4",
+                                         completion: @escaping (Result<URL, Error>) -> Void) {
+        if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+            generateVideo(localFile: url, completion: completion)
+        } else {
+            let err = NSError(domain: "PictunesService",
+                              code: -21,
+                              userInfo: [NSLocalizedDescriptionKey: "找不到 Bundle 內的 \(name).\(ext)"])
+            DispatchQueue.main.async { completion(.failure(err)) }
+        }
+    }
+
+
+
+    // MARK: - Media merger
+
+    public func generateVideo(image: UIImage,
+                              audioFileURL: URL,
+                              completion: @escaping (Result<URL, Error>) -> Void) {
+        switch mode {
+        case .mock:
+            lastUsedMock = true
+            debugState = .requesting(endpoint: "/media_merger [mock]")
+            let mockURL = URL(string: "https://filesamples.com/samples/video/mp4/sample_960x400_ocean_with_audio.mp4")!
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.debugState = .success(source: "mock", httpStatus: 200, detail: "Media merged")
+                completion(.success(mockURL))
+            }
+        case .live:
+            performMediaMergerUpload(image: image, audioFileURL: audioFileURL, fallbackToMock: false, completion: completion)
+        case .autoFallback:
+            performMediaMergerUpload(image: image, audioFileURL: audioFileURL, fallbackToMock: true, completion: completion)
+        }
+    }
+
+    private func performMediaMergerUpload(image: UIImage,
+                                          audioFileURL: URL,
+                                          fallbackToMock: Bool,
+                                          completion: @escaping (Result<URL, Error>) -> Void) {
         lastUsedMock = false
         debugState = .requesting(endpoint: "/media_merger")
 
-        guard let jpegData = prepareJPEGData(from: image, maxPixel: 1600, quality: 0.75) else {
+        // 準備圖片資料
+        guard let jpegData = prepareJPEGData(from: image, maxPixel: 1600, quality: 0.8) else {
             let err = NSError(domain: "PictunesService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Cannot convert image to JPEG"])
             lastErrorMessage = err.localizedDescription
             debugState = .failure(message: err.localizedDescription, httpStatus: nil, dataSnippet: nil)
@@ -509,37 +525,52 @@ public final class PictunesService: ObservableObject {
             return
         }
 
-        var req = URLRequest(url: mediaMergerEndpoint)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 120
-        let boundary = UUID().uuidString
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        // 讀取音檔資料（若來自 Files，處理 security-scoped URL）
+        var audioData: Data
+        var stopAccess = false
+        if audioFileURL.startAccessingSecurityScopedResource() {
+            stopAccess = true
+        }
+        do {
+            audioData = try Data(contentsOf: audioFileURL)
+        } catch {
+            if stopAccess { audioFileURL.stopAccessingSecurityScopedResource() }
+            lastErrorMessage = error.localizedDescription
+            debugState = .failure(message: error.localizedDescription, httpStatus: nil, dataSnippet: nil)
+            DispatchQueue.main.async { completion(.failure(error)) }
+            return
+        }
+        if stopAccess { audioFileURL.stopAccessingSecurityScopedResource() }
 
+        // 建立請求：注意尾斜線
+        var request = URLRequest(url: baseURL.appendingPathComponent("media_merger/"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 240
+        let boundary = "pictunes-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("video/mp4,application/octet-stream,*/*", forHTTPHeaderField: "Accept")
+
+        // 組 multipart body（欄位名必須為 img、aud）
         var body = Data()
+
+        // 圖片欄位：img
         body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"image.jpg\"\r\n")
+        body.append("Content-Disposition: form-data; name=\"img\"; filename=\"image.jpg\"\r\n")
         body.append("Content-Type: image/jpeg\r\n\r\n")
         body.append(jpegData)
         body.append("\r\n")
+
+        // 音檔欄位：aud
+        let audioFilename = audioFileURL.lastPathComponent.isEmpty ? "audio.\(audioFileURL.pathExtension.isEmpty ? "mp3" : audioFileURL.pathExtension)" : audioFileURL.lastPathComponent
         body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"audio_url\"\r\n\r\n")
-        body.append(track.link)
+        body.append("Content-Disposition: form-data; name=\"aud\"; filename=\"\(audioFilename)\"\r\n")
+        body.append("Content-Type: \(mimeTypeForAudio(at: audioFileURL))\r\n\r\n")
+        body.append(audioData)
         body.append("\r\n")
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"start\"\r\n\r\n")
-        body.append(String(track.start))
-        body.append("\r\n")
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"end\"\r\n\r\n")
-        body.append(String(track.end))
-        body.append("\r\n")
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"domain\"\r\n\r\n")
-        body.append(backendDomainString(domain))
-        body.append("\r\n")
+
         body.append("--\(boundary)--\r\n")
 
-        urlSession.uploadTask(with: req, from: body) { data, response, error in
+        urlSession.uploadTask(with: request, from: body) { data, response, error in
             let code = (response as? HTTPURLResponse)?.statusCode
             self.lastHTTPStatus = code
 
@@ -559,7 +590,7 @@ public final class PictunesService: ObservableObject {
 
             guard let code = code, let data = data, (200..<300).contains(code) else {
                 let snippet = data.flatMap { String(data: $0, encoding: .utf8) }?.prefix(200)
-                let err = NSError(domain: "PictunesService", code: code ?? -3, userInfo: [NSLocalizedDescriptionKey: "Media merger failed. HTTP \(code ?? -1). \(snippet ?? "")"])
+                let err = NSError(domain: "PictunesService", code: code ?? -2, userInfo: [NSLocalizedDescriptionKey: "media_merger failed. HTTP \(code ?? -1). \(snippet ?? "")"])
                 self.lastErrorMessage = err.localizedDescription
                 if fallbackToMock {
                     let mockURL = URL(string: "https://filesamples.com/samples/video/mp4/sample_960x400_ocean_with_audio.mp4")!
@@ -573,28 +604,12 @@ public final class PictunesService: ObservableObject {
                 return
             }
 
-            struct RenderRespA: Codable { let video_url: URL? }
-            struct RenderRespB: Codable { let videoUrl: URL? }
-
-            if let respA = try? JSONDecoder().decode(RenderRespA.self, from: data), let u = respA.video_url {
-                let abs = self.absolutize(u) ?? u
-                self.debugState = .success(source: "live", httpStatus: code, detail: "video_url JSON")
-                self.lastErrorMessage = nil
-                DispatchQueue.main.async { completion(.success(abs)) }
-                return
-            }
-            if let respB = try? JSONDecoder().decode(RenderRespB.self, from: data), let u = respB.videoUrl {
-                let abs = self.absolutize(u) ?? u
-                self.debugState = .success(source: "live", httpStatus: code, detail: "videoUrl JSON")
-                self.lastErrorMessage = nil
-                DispatchQueue.main.async { completion(.success(abs)) }
-                return
-            }
-
+            // 若回應為二進位影片，直接寫入暫存檔
             if let mime = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type"),
                mime.lowercased().contains("video/") || !mime.lowercased().contains("json") {
                 do {
-                    let tmpURL = try self.saveVideoToTemporaryFile(data: data)
+                    let filename = self.extractFilename(from: (response as? HTTPURLResponse)) ?? "pictunes_\(UUID().uuidString.prefix(8)).mp4"
+                    let tmpURL = try self.saveVideoToTemporaryFile(data: data, preferredFilename: filename)
                     self.debugState = .success(source: "live", httpStatus: code, detail: "binary video")
                     self.lastErrorMessage = nil
                     DispatchQueue.main.async { completion(.success(tmpURL)) }
@@ -614,33 +629,205 @@ public final class PictunesService: ObservableObject {
                 }
             }
 
+            // 若不是影片，嘗試 JSON 取網址再播放（備援）
+            struct RenderRespA: Codable { let video_url: URL? }
+            struct RenderRespB: Codable { let videoUrl: URL? }
+            if let respA = try? JSONDecoder().decode(RenderRespA.self, from: data), let u = respA.video_url {
+                let abs = self.absolutize(u) ?? u
+                self.debugState = .success(source: "live", httpStatus: code, detail: "video_url JSON")
+                self.lastErrorMessage = nil
+                DispatchQueue.main.async { completion(.success(abs)) }
+                return
+            }
+            if let respB = try? JSONDecoder().decode(RenderRespB.self, from: data), let u = respB.videoUrl {
+                let abs = self.absolutize(u) ?? u
+                self.debugState = .success(source: "live", httpStatus: code, detail: "videoUrl JSON")
+                self.lastErrorMessage = nil
+                DispatchQueue.main.async { completion(.success(abs)) }
+                return
+            }
+
             let err = NSError(domain: "PictunesService", code: -11, userInfo: [NSLocalizedDescriptionKey: "Unknown media_merger response"])
             self.lastErrorMessage = err.localizedDescription
-            if fallbackToMock {
-                let mockURL = URL(string: "https://filesamples.com/samples/video/mp4/sample_960x400_ocean_with_audio.mp4")!
-                self.lastUsedMock = true
-                self.debugState = .failure(message: err.localizedDescription, httpStatus: code, dataSnippet: nil)
-                DispatchQueue.main.async { completion(.success(mockURL)) }
-            } else {
-                self.debugState = .failure(message: err.localizedDescription, httpStatus: code, dataSnippet: nil)
-                DispatchQueue.main.async { completion(.failure(err)) }
+            self.debugState = .failure(message: err.localizedDescription, httpStatus: code, dataSnippet: nil)
+            DispatchQueue.main.async { completion(.failure(err)) }
+        }.resume()
+    }
+    
+    // MARK: - Media merger: 圖片 + 遠端音檔 URL
+
+    /// 使用遠端音檔 URL（後端已選定）與圖片，呼叫 /media_merger/，回傳本機暫存 mp4 檔案 URL
+    public func generateVideoUsingRemoteAudioURL(
+        image: UIImage,
+        audioURL: URL,
+        start: Int? = nil,
+        end: Int? = nil,
+        domain: RecommendationDomain? = nil,
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) {
+        lastUsedMock = false
+        debugState = .requesting(endpoint: "/media_merger")
+
+        guard let jpegData = prepareJPEGData(from: image, maxPixel: 1600, quality: 0.8) else {
+            let err = NSError(domain: "PictunesService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Cannot convert image to JPEG"])
+            lastErrorMessage = err.localizedDescription
+            debugState = .failure(message: err.localizedDescription, httpStatus: nil, dataSnippet: nil)
+            DispatchQueue.main.async { completion(.failure(err)) }
+            return
+        }
+
+        // 尾斜線依照你後端 Swagger 的 URL
+        var request = URLRequest(url: baseURL.appendingPathComponent("media_merger/"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 240
+        let boundary = "pictunes-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("video/mp4,application/octet-stream,*/*", forHTTPHeaderField: "Accept")
+
+        var body = Data()
+
+        // 圖片欄位：使用後端 Swagger 的欄位名 img
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"img\"; filename=\"image.jpg\"\r\n")
+        body.append("Content-Type: image/jpeg\r\n\r\n")
+        body.append(jpegData)
+        body.append("\r\n")
+
+        // 遠端音檔網址：audio_url
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"audio_url\"\r\n\r\n")
+        body.append(audioURL.absoluteString)
+        body.append("\r\n")
+
+        // 可選參數
+        if let s = start {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"start\"\r\n\r\n")
+            body.append(String(s))
+            body.append("\r\n")
+        }
+        if let e = end {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"end\"\r\n\r\n")
+            body.append(String(e))
+            body.append("\r\n")
+        }
+        if let d = domain {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"domain\"\r\n\r\n")
+            body.append(backendDomainString(d))
+            body.append("\r\n")
+        }
+
+        body.append("--\(boundary)--\r\n")
+
+        urlSession.uploadTask(with: request, from: body) { data, response, error in
+            let code = (response as? HTTPURLResponse)?.statusCode
+            self.lastHTTPStatus = code
+
+            if let error = error {
+                self.lastErrorMessage = error.localizedDescription
+                self.debugState = .failure(message: error.localizedDescription, httpStatus: code, dataSnippet: nil)
+                DispatchQueue.main.async { completion(.failure(error)) }
+                return
             }
+
+            guard let code = code, let data = data, (200..<300).contains(code) else {
+                let snippet = data.flatMap { String(data: $0, encoding: .utf8) }?.prefix(200)
+                let err = NSError(domain: "PictunesService", code: code ?? -2, userInfo: [NSLocalizedDescriptionKey: "media_merger failed. HTTP \(code ?? -1). \(snippet ?? "")"])
+                self.lastErrorMessage = err.localizedDescription
+                self.debugState = .failure(message: err.localizedDescription, httpStatus: code, dataSnippet: data.flatMap { String(data: $0, encoding: .utf8) })
+                DispatchQueue.main.async { completion(.failure(err)) }
+                return
+            }
+
+            // 回傳為影片二進位：寫入暫存檔
+            if let mime = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type"),
+               mime.lowercased().contains("video/") || !mime.lowercased().contains("json") {
+                do {
+                    let filename = self.extractFilename(from: (response as? HTTPURLResponse)) ?? "pictunes_\(UUID().uuidString.prefix(8)).mp4"
+                    let tmpURL = try self.saveVideoToTemporaryFile(data: data, preferredFilename: filename) // 注意要有 data: 標籤
+                    self.debugState = .success(source: "live", httpStatus: code, detail: "binary video")
+                    self.lastErrorMessage = nil
+                    DispatchQueue.main.async { completion(.success(tmpURL)) }
+                    return
+                } catch {
+                    self.lastErrorMessage = error.localizedDescription
+                    self.debugState = .failure(message: error.localizedDescription, httpStatus: code, dataSnippet: nil)
+                    DispatchQueue.main.async { completion(.failure(error)) }
+                    return
+                }
+            }
+
+            // 後端若回 JSON 給 video_url 也一併支援
+            struct RespA: Codable { let video_url: URL? }
+            struct RespB: Codable { let videoUrl: URL? }
+            if let r = try? JSONDecoder().decode(RespA.self, from: data), let u = r.video_url {
+                let abs = self.absolutize(u) ?? u
+                self.debugState = .success(source: "live", httpStatus: code, detail: "video_url JSON")
+                DispatchQueue.main.async { completion(.success(abs)) }
+                return
+            }
+            if let r = try? JSONDecoder().decode(RespB.self, from: data), let u = r.videoUrl {
+                let abs = self.absolutize(u) ?? u
+                self.debugState = .success(source: "live", httpStatus: code, detail: "videoUrl JSON")
+                DispatchQueue.main.async { completion(.success(abs)) }
+                return
+            }
+
+            let err = NSError(domain: "PictunesService", code: -11, userInfo: [NSLocalizedDescriptionKey: "Unknown media_merger response"])
+            self.lastErrorMessage = err.localizedDescription
+            self.debugState = .failure(message: err.localizedDescription, httpStatus: code, dataSnippet: nil)
+            DispatchQueue.main.async { completion(.failure(err)) }
         }.resume()
     }
 
-    // 解析多種回傳為 UploadResponse；會遞迴搜尋 data/result/payload 內層，
-    // 並且支援 top_10_matches / all_top_matches / all_class_matches
+    
+    // 從 Content-Disposition 取回檔名（若有）
+    private func extractFilename(from http: HTTPURLResponse?) -> String? {
+        guard let cd = http?.value(forHTTPHeaderField: "Content-Disposition") else { return nil }
+        // 例：attachment; filename="output_IMG_7472_1042.mp4"
+        let parts = cd.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
+        for p in parts {
+            if p.lowercased().hasPrefix("filename=") {
+                var name = p.replacingOccurrences(of: "filename=", with: "")
+                name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                if name.lowercased().hasSuffix(".mp4") { return name }
+                return name + ".mp4"
+            }
+        }
+        return nil
+    }
+
+    private func saveVideoToTemporaryFile(data: Data, preferredFilename: String? = nil) throws -> URL {
+        let filename = preferredFilename ?? "pictunes_\(UUID().uuidString.prefix(8)).mp4"
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
+        try data.write(to: tmp, options: .atomic)
+        return tmp
+    }
+    
+    private func mimeTypeForAudio(at url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "mp3": return "audio/mpeg"
+        case "m4a", "aac": return "audio/mp4"
+        case "wav": return "audio/wav"
+        case "flac": return "audio/flac"
+        default: return "audio/mpeg"
+        }
+    }
+
+    // MARK: - Parsing helpers
+
     private func tryDecodeToUploadResponse(data: Data) -> UploadResponse? {
         if logRawUploadResponse, let s = String(data: data, encoding: .utf8) {
             print("[Pictunes] RAW upload JSON:", s.prefix(800))
         }
 
-        // 1) 直接是我們的模型
         if let decoded = try? JSONDecoder().decode(UploadResponse.self, from: data) {
             return normalizeURLs(in: decoded)
         }
 
-        // 2) 舊格式：{ status, matches: [...] }
         struct Match: Codable { let similarity: Double?; let filename: String?; let `class`: String?; let full_path: String? }
         struct MatchesPayload: Codable { let status: String?; let matches: [Match]? }
         if let m = try? JSONDecoder().decode(MatchesPayload.self, from: data), let list = m.matches, !list.isEmpty {
@@ -653,16 +840,12 @@ public final class PictunesService: ObservableObject {
             return normalizeURLs(in: UploadResponse(label: m.status ?? "success", music: [], similar: items, videoUrl: nil))
         }
 
-        // 3) 動態解析：尋找清單鍵（含 top_10_matches / all_top_matches / all_class_matches）
         if let root = try? JSONSerialization.jsonObject(with: data) {
-
-            // 3a) 回傳是 array 直接 map
             if let arrRoot = root as? [[String:Any]], !arrRoot.isEmpty {
                 let items = mapGenericList(arrRoot)
                 return normalizeURLs(in: UploadResponse(label: "success", music: [], similar: items, videoUrl: nil))
             }
 
-            // 3b) 回傳是 dict：遞迴找第一個非空清單
             if let dictRoot = root as? [String:Any] {
                 if let arr = deepFirstArray(in: dictRoot), !arr.isEmpty {
                     let items = mapGenericList(arr)
@@ -676,41 +859,6 @@ public final class PictunesService: ObservableObject {
         }
 
         return nil
-    }
-
-    private func saveVideoToTemporaryFile(data: Data) throws -> URL {
-        let filename = "pictunes_\(UUID().uuidString.prefix(8)).mp4"
-        let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
-        try data.write(to: tmp, options: .atomic)
-        return tmp
-    }
-
-    // MARK: - Mock + URL helpers
-
-    private func switchToMockDueTo(_ error: Error, completion: @escaping (Result<UploadResponse, Error>) -> Void) {
-        lastUsedMock = true
-        returnMock(after: 0.2, completion: completion)
-    }
-
-    private func returnMock(after delay: TimeInterval, completion: @escaping (Result<UploadResponse, Error>) -> Void) {
-        let mock = UploadResponse(
-            label: "beach sunset",
-            music: [
-                Music(title: "Clair de Lune", composer: "Debussy", start: 30, end: 60, link: "https://www.youtube.com/watch?v=CvFH_6DNRCY"),
-                Music(title: "Gymnopédie No.1", composer: "Erik Satie", start: 10, end: 45, link: "https://www.youtube.com/watch?v=S-Xm7s9eGxU")
-            ],
-            similar: [
-                SimilarItem(imageUrl: URL(string: "https://picsum.photos/seed/sim1/600/400")!, score: 0.873, label: "sunset", style: "warm", filename: "sim1"),
-                SimilarItem(imageUrl: URL(string: "https://picsum.photos/seed/sim2/600/400")!, score: 0.842, label: "beach", style: "calm", filename: "sim2"),
-                SimilarItem(imageUrl: URL(string: "https://picsum.photos/seed/sim3/600/400")!, score: 0.801, label: "sky", style: "bright", filename: "sim3")
-            ],
-            videoUrl: URL(string: "https://filesamples.com/samples/video/mp4/sample_960x400_ocean_with_audio.mp4")
-        )
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            self.debugState = .success(source: "mock", httpStatus: 200, detail: "mock upload")
-            self.lastErrorMessage = nil
-            completion(.success(mock))
-        }
     }
 
     private func normalizeURLs(in response: UploadResponse) -> UploadResponse {
@@ -731,15 +879,9 @@ public final class PictunesService: ObservableObject {
         return u
     }
 
-    // 將任意字串轉為可下載的絕對網址；支援 "./dataset/..", "/dataset/..", "dataset/.."
     private func absolutizeString(_ s: String) -> URL? {
-        // 已經是完整 URL
         if let u = URL(string: s), u.scheme != nil { return u }
-
-        // 規範化相對路徑
         let norm = normalizedRelativeDatasetPath(s)
-
-        // 優先使用 publicImageRootPath
         let withRoot = norm.hasPrefix("/") ? String(norm.dropFirst()) : norm
         let primary = baseURL.appendingPathComponent(withRoot)
         return primary
@@ -747,49 +889,30 @@ public final class PictunesService: ObservableObject {
 
     private func normalizedRelativeDatasetPath(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // 去掉前導 "./"
         if s.hasPrefix("./") { s.removeFirst(2) }
-        // 去掉多餘前導 "/"
         while s.hasPrefix("/") { s.removeFirst() }
 
-        // 已經是 image/ 前綴，直接加一個 "/" 回去
-        if s.lowercased().hasPrefix("image/") {
-            return "/\(s)"
-        }
-        // static/ 前綴也視為已決定的公開根
-        if s.lowercased().hasPrefix("static/") {
-            return "/\(s)"
-        }
-        // 若是 dataset/ 前綴，改掛到我們設定的公開根路徑（例如 /image）
+        if s.lowercased().hasPrefix("image/") { return "/\(s)" }
+        if s.lowercased().hasPrefix("static/") { return "/\(s)" }
         if s.lowercased().hasPrefix("dataset/") {
             let root = publicImageRootPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             return "/\(root)/\(s.dropFirst("dataset/".count))"
         }
-
-        // 其他相對路徑，一律接在公開根路徑後面
         let root = publicImageRootPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return "/\(root)/\(s)"
     }
 
-
-
-    // 遞迴在任意深度尋找可能的清單鍵
     private func deepFirstArray(in dict: [String:Any]) -> [[String:Any]]? {
-        // 新增 top_10_matches / all_top_matches / all_class_matches 等鍵名
         let candidateKeys = [
             "images", "matches",
             "top_10_matches", "top10", "top", "top_matches",
             "all_top_matches", "all_class_matches",
             "items", "results", "list"
         ]
-
         for k in candidateKeys {
             if let arr = dict[k] as? [[String:Any]], !arr.isEmpty { return arr }
             if let anyArr = dict[k] as? [Any], let arr = anyArr as? [[String:Any]], !arr.isEmpty { return arr }
         }
-
-        // 繼續向下鑽
         for (_, v) in dict {
             if let sub = v as? [String:Any], let found = deepFirstArray(in: sub) { return found }
             if let arrDict = v as? [[String:Any]], !arrDict.isEmpty { return arrDict }
@@ -802,8 +925,6 @@ public final class PictunesService: ObservableObject {
         return nil
     }
 
-
-    // 將任意字典陣列轉 SimilarItem，容忍多種鍵名；若只有 filename 與 class，會自動組成 /dataset/{class}/{filename}.jpg
     private func mapGenericList(_ arr: [[String: Any]]) -> [SimilarItem] {
         func str(_ d: [String:Any], _ keys: [String]) -> String? {
             for k in keys {
@@ -822,27 +943,23 @@ public final class PictunesService: ObservableObject {
             return nil
         }
         func ensureJpg(_ name: String) -> String {
-            if name.lowercased().hasSuffix(".jpg") || name.lowercased().hasSuffix(".jpeg") || name.lowercased().hasSuffix(".png") {
-                return name
-            }
+            let lower = name.lowercased()
+            if lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg") || lower.hasSuffix(".png") { return name }
             return name + ".jpg"
         }
 
         return arr.compactMap { d in
-            // 可能的來源欄位
             let urlStr  = str(d, ["image_url","imageUrl","full_path","url","path","imagePath"])
             let label   = str(d, ["label","class","title","name"])
             let style   = str(d, ["style"])
             var file    = str(d, ["filename","file","id"])
             let score   = dbl(d, ["score","similarity","sim","prob"]) ?? 0
 
-            // 1) 若已有可用網址或相對路徑
             if let s = urlStr, let abs = absolutizeString(s) {
                 if file == nil { file = abs.lastPathComponent }
                 return SimilarItem(imageUrl: abs, score: score, label: label, style: style, filename: file)
             }
 
-            // 2) 沒有網址但有 filename 與 class，自己組成 /dataset/{class}/{filename}.jpg
             if let filename = file ?? str(d, ["id"]),
                let cls = label {
                 let sanitizedClass = cls.replacingOccurrences(of: " ", with: "_")
@@ -852,15 +969,18 @@ public final class PictunesService: ObservableObject {
                 }
             }
 
-            // 3) 仍然沒有可用網址，用隨機圖做最後保底，至少不會留空
             let seed = file ?? label ?? "img"
             let fallback = URL(string: "https://picsum.photos/seed/\(seed)/600/400")!
             return SimilarItem(imageUrl: fallback, score: score, label: label, style: style, filename: file)
         }
     }
 
+    // MARK: - Common helpers
 
-    // 產生壓縮 JPEG：等比縮到最長邊 maxPixel，再壓品質；若仍超過 4MB 再降品質
+    private func backendDomainString(_ domain: RecommendationDomain) -> String {
+        switch domain { case .anime: return "Anime"; case .film: return "Film" }
+    }
+
     private func prepareJPEGData(from image: UIImage, maxPixel: CGFloat, quality: CGFloat) -> Data? {
         let size = image.size
         let maxSide = max(size.width, size.height)
@@ -882,6 +1002,35 @@ public final class PictunesService: ObservableObject {
     private func clog(_ message: String) {
         print("[Pictunes] \(message)")
         logger.info("\(message, privacy: .public)")
+    }
+
+    // MARK: - Mock helpers（這兩個是本次新增，修正找不到成員的錯誤）
+
+    private func switchToMockDueTo(_ error: Error, completion: @escaping (Result<UploadResponse, Error>) -> Void) {
+        lastUsedMock = true
+        returnMock(after: 0.2, completion: completion)
+    }
+
+    private func returnMock(after delay: TimeInterval,
+                            completion: @escaping (Result<UploadResponse, Error>) -> Void) {
+        let mock = UploadResponse(
+            label: "beach sunset",
+            music: [
+                Music(title: "Clair de Lune", composer: "Debussy", start: 30, end: 60, link: "https://www.youtube.com/watch?v=CvFH_6DNRCY"),
+                Music(title: "Gymnopédie No.1", composer: "Erik Satie", start: 10, end: 45, link: "https://www.youtube.com/watch?v=S-Xm7s9eGxU")
+            ],
+            similar: [
+                SimilarItem(imageUrl: URL(string: "https://picsum.photos/seed/sim1/600/400")!, score: 0.873, label: "sunset", style: "warm", filename: "sim1"),
+                SimilarItem(imageUrl: URL(string: "https://picsum.photos/seed/sim2/600/400")!, score: 0.842, label: "beach", style: "calm", filename: "sim2"),
+                SimilarItem(imageUrl: URL(string: "https://picsum.photos/seed/sim3/600/400")!, score: 0.801, label: "sky", style: "bright", filename: "sim3")
+            ],
+            videoUrl: URL(string: "https://filesamples.com/samples/video/mp4/sample_960x400_ocean_with_audio.mp4")
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            self.debugState = .success(source: "mock", httpStatus: 200, detail: "mock upload")
+            self.lastErrorMessage = nil
+            completion(.success(mock))
+        }
     }
 }
 

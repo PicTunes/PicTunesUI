@@ -4,6 +4,7 @@ import PhotosUI
 import AVKit
 
 struct ContentView: View {
+    
     @EnvironmentObject var theme: ThemeStore
 
     // Tabs
@@ -22,7 +23,9 @@ struct ContentView: View {
     @State private var analysisLabel: String? = nil
     @State private var musicList: [Music] = []
     @State private var similarItems: [SimilarItem] = []
-    @State private var generatedVideoURL: URL?
+    // ContentView 或你的「合成」頁面頂部狀態區
+    @State private var generatedVideoURL: URL? = nil
+
 
     // Playback state for recommendation list
     @State private var playingMusicID: UUID? = nil
@@ -240,7 +243,7 @@ struct ContentView: View {
     // MARK: - Preview tab
     private var previewView: some View {
         VStack(spacing: 16) {
-            Text("PicTunes：合成（\(domainTitle)）")
+            Text("PicTunes：預覽（\(domainTitle)）")
                 .font(.title).bold()
                 .foregroundStyle(theme.c.pageTitleColor)
                 .padding(.top)
@@ -319,24 +322,42 @@ struct ContentView: View {
     /// Existing behavior: generate right after selecting a track on the recommendation page.
     private func selectAndRender(track: Music) {
         guard let img = selectedImage else {
-            lastErrorMessage = "尚未選擇圖片，無法產生影片"
+            lastErrorMessage = "尚未選擇圖片"
             return
         }
+
+        // 後端提供的遠端音檔連結（例如你們的 CDN、S3、或後端預處理後的 URL）
+        guard let audioURL = URL(string: track.link) else {
+            lastErrorMessage = "音檔連結無效"
+            return
+        }
+
         isUploading = true
         lastErrorMessage = nil
 
-        // Your backend signature: generateVideo(image:domain:track:completion)
-        PictunesService.shared.generateVideo(image: img, domain: currentDomain, track: track) { result in
-            isUploading = false
-            switch result {
-            case .success(let url):
-                self.generatedVideoURL = url
-                self.selectedTab = .preview
-            case .failure(let err):
-                self.lastErrorMessage = err.localizedDescription
+        // domain 依你的切換狀態帶入
+        let domainToUse = currentDomain
+
+        PictunesService.shared.generateVideoUsingRemoteAudioURL(
+            image: img,
+            audioURL: audioURL,
+            start: track.start,
+            end: track.end,
+            domain: domainToUse
+        ) { (result: Result<URL, Error>) in
+            DispatchQueue.main.async {
+                isUploading = false
+                switch result {
+                case .success(let url):
+                    self.generatedVideoURL = url
+                    self.selectedTab = .preview
+                case .failure(let err):
+                    self.lastErrorMessage = err.localizedDescription
+                }
             }
         }
     }
+
 
     /// New: re-generate from preview page card
     private func regenerateFromPreview() {
@@ -354,6 +375,8 @@ struct ContentView: View {
         case .film:  return "電影"
         }
     }
+    
+    
 }
 
 // MARK: - Domain segmented toggle
@@ -405,6 +428,8 @@ private struct HintPill: View {
 }
 
 //
+
+
 // MARK: - Inline ChosenCategoryCard
 //
 struct ChosenCategoryCard: View {

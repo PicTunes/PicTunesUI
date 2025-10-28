@@ -2,18 +2,80 @@
 import SwiftUI
 import AVKit
 
-// MARK: - Player on preview page
+/// 可內嵌播放 + 全螢幕的影片預覽元件
 struct VideoPreviewView: View {
     let videoURL: URL
 
+    // 持有 Player，避免 View 重建就中斷
+    @State private var player: AVPlayer = AVPlayer()
+    @State private var showFullScreen = false
+
     var body: some View {
-        VideoPlayer(player: AVPlayer(url: videoURL))
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        // 內嵌播放器
+        VideoPlayer(player: player)
+            .background(Color.black)
+            .overlay(fullscreenButton, alignment: .topTrailing) // 右上角全螢幕按鈕
+            .onAppear {
+                // 若沒有載入影片或來源不同，替換並播放
+                if (player.currentItem as? AVPlayerItem)?.asset is AVURLAsset == false ||
+                    (player.currentItem?.asset as? AVURLAsset)?.url != videoURL {
+                    player.replaceCurrentItem(with: AVPlayerItem(url: videoURL))
+                }
+                player.play()
+            }
+            .onChange(of: videoURL) { newURL in
+                player.replaceCurrentItem(with: AVPlayerItem(url: newURL))
+                player.play()
+            }
+            .onDisappear { player.pause() }
+            // 用原生 AVPlayerViewController 做全螢幕
+            .fullScreenCover(isPresented: $showFullScreen) {
+                PlayerFullScreenView(player: player)
+                    .ignoresSafeArea()
+            }
+    }
+
+    // 右上角全螢幕按鈕
+    private var fullscreenButton: some View {
+        Button {
+            showFullScreen = true
+        } label: {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(10)
+                .background(Color.black.opacity(0.45))
+                .clipShape(Circle())
+                .padding(10)
+        }
+        .accessibilityLabel("全螢幕播放")
     }
 }
 
+/// 以 AVPlayerViewController 呈現全螢幕，沿用同一個 AVPlayer（保留進度、靜音狀態等）
+private struct PlayerFullScreenView: UIViewControllerRepresentable {
+    let player: AVPlayer
 
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let vc = AVPlayerViewController()
+        vc.player = player
+        vc.modalPresentationStyle = .fullScreen
+        vc.entersFullScreenWhenPlaybackBegins = false
+        vc.exitsFullScreenWhenPlaybackEnds = true
+        vc.canStartPictureInPictureAutomaticallyFromInline = true
+        return vc
+    }
+
+    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
+        if vc.player !== player {
+            vc.player = player
+        }
+        // 開啟全螢幕時若尚未播放，讓它自動播放
+        if vc.player?.timeControlStatus != .playing {
+            vc.player?.play()
+        }
+    }
+}
 // MARK: - Header card that follows theme colors
 struct PreviewHeaderCard: View {
     @EnvironmentObject var theme: ThemeStore
