@@ -4,15 +4,12 @@
 // - If the link is a YouTube watch URL (has ?v=...), embed YouTubeInlinePlayerView.
 // - Otherwise, use AVPlayer to play an audio clip between start~end seconds.
 // - Uses a single `playingMusicID` to ensure only one item plays at a time.
-
+// RecommendationSectionView.swift
 import SwiftUI
 import AVFoundation
 
-// MARK: - AudioPlayerManager
-/// Owns an AVPlayer for non-YouTube sources and handles clip playback (start~end).
 final class AudioPlayerManager: ObservableObject {
     @Published var isPlaying = false
-
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var clipStart: Double = 0
@@ -20,7 +17,6 @@ final class AudioPlayerManager: ObservableObject {
 
     var isSetup: Bool { player != nil }
 
-    /// Setup player with url and clip range [start, end]
     func setup(urlString: String, start: Int, end: Int) {
         guard let url = URL(string: urlString) else { return }
         player = AVPlayer(url: url)
@@ -29,7 +25,6 @@ final class AudioPlayerManager: ObservableObject {
         addObserver()
     }
 
-    /// Toggle play/pause. Seeks to clipStart when starting.
     func playPause() {
         guard let player = player else { return }
         if isPlaying {
@@ -43,7 +38,6 @@ final class AudioPlayerManager: ObservableObject {
         }
     }
 
-    /// Stop and reset to start
     func stop() {
         guard let player = player else { return }
         player.pause()
@@ -61,7 +55,6 @@ final class AudioPlayerManager: ObservableObject {
             guard let self = self else { return }
             let current = CMTimeGetSeconds(time)
             if current >= self.clipEnd {
-                // Auto stop at clip end
                 self.stop()
             }
         }
@@ -79,12 +72,9 @@ final class AudioPlayerManager: ObservableObject {
     }
 }
 
-// MARK: - RecommendationSectionView
 struct RecommendationSectionView: View {
     @EnvironmentObject var theme: ThemeStore
-
     let musicList: [Music]
-    /// Single source of truth for "who is playing now"
     @State private var playingMusicID: UUID? = nil
 
     var body: some View {
@@ -104,14 +94,12 @@ struct RecommendationSectionView: View {
     }
 }
 
-// MARK: - PreviewCardView (one card per track)
 struct PreviewCardView: View {
     @EnvironmentObject var theme: ThemeStore
 
     let music: Music
     @Binding var playingMusicID: UUID?
 
-    // For non-YouTube sources
     @StateObject private var audioMgr = AudioPlayerManager()
 
     private var isPlaying: Bool { playingMusicID == music.id }
@@ -121,7 +109,6 @@ struct PreviewCardView: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 16) {
-                // Left icon / visualizer
                 if isPlaying {
                     AudioVisualizerView(barCount: 4, updateInterval: 0.15)
                         .frame(width: 30, height: 30)
@@ -131,7 +118,6 @@ struct PreviewCardView: View {
                         .foregroundColor(theme.c.accentColor)
                 }
 
-                // Title / composer / time
                 VStack(alignment: .leading, spacing: 4) {
                     Text(music.title)
                         .font(.headline)
@@ -146,7 +132,6 @@ struct PreviewCardView: View {
 
                 Spacer()
 
-                // Play/Pause button
                 Button {
                     handleTap()
                 } label: {
@@ -159,7 +144,6 @@ struct PreviewCardView: View {
             .padding(.horizontal, 12)
             .padding(.top, 12)
 
-            // Inline player (YouTube only when playing)
             if isPlaying, let vid = videoID {
                 YouTubeInlinePlayerView(videoID: vid, start: music.start, end: music.end)
                     .frame(height: 180)
@@ -172,50 +156,51 @@ struct PreviewCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 3)
         .onChange(of: playingMusicID) { _ in
-            // If another card starts playing, stop local AVPlayer (non-YouTube)
             if playingMusicID != music.id, audioMgr.isPlaying {
                 audioMgr.stop()
             }
         }
     }
 
-    // MARK: - Actions
     private func handleTap() {
         if isPlaying {
-            // Pause current
             if !isYouTube {
                 audioMgr.stop()
             }
             playingMusicID = nil
         } else {
-            // Start this item
             if isYouTube {
-                // YouTube is driven by YouTubeInlinePlayerView; just flip the ID
                 playingMusicID = music.id
             } else {
-                // Non-YouTube: use AVPlayer to play the clip
                 if !audioMgr.isSetup {
                     audioMgr.setup(urlString: music.link, start: music.start, end: music.end)
                 }
-                // Ensure single source of truth
                 playingMusicID = music.id
                 audioMgr.playPause()
             }
         }
     }
 
-    // MARK: - Utilities
-    /// Extract YouTube video ID from a typical "watch?v=" URL. Returns nil if not present.
     private static func youtubeID(from link: String) -> String? {
-        guard let comp = URLComponents(string: link),
-              let v = comp.queryItems?.first(where: { $0.name == "v" })?.value,
-              !v.isEmpty else { return nil }
-        return v
+        guard let comp = URLComponents(string: link) else { return nil }
+
+        if let host = comp.host, host.contains("youtu.be") {
+            let parts = comp.path.split(separator: "/").map(String.init)
+            return parts.first
+        }
+        if let host = comp.host, host.contains("youtube.com") {
+            if let v = comp.queryItems?.first(where: { $0.name == "v" })?.value, !v.isEmpty {
+                return v
+            }
+            let parts = comp.path.split(separator: "/").map(String.init)
+            if parts.count >= 2, parts[0].lowercased() == "shorts" {
+                return parts[1]
+            }
+        }
+        return nil
     }
 }
 
-// MARK: - AudioVisualizerView
-/// Simple animated bar visualizer used while a track is playing.
 struct AudioVisualizerView: View {
     @EnvironmentObject var theme: ThemeStore
 
@@ -235,7 +220,6 @@ struct AudioVisualizerView: View {
         }
         .onAppear {
             heights = Array(repeating: 4, count: barCount)
-            // Drive random heights
             startTimer()
         }
         .onDisappear {
@@ -248,7 +232,6 @@ struct AudioVisualizerView: View {
         let id = UUID()
         timerID = id
         Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { t in
-            // Avoid timer retaining after view gone
             if id != timerID {
                 t.invalidate()
                 return
@@ -262,7 +245,6 @@ struct AudioVisualizerView: View {
     }
 
     private func stopTimer() {
-        // Bump timerID so old timers invalidate on next tick
         timerID = UUID()
     }
 }

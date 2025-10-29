@@ -11,11 +11,26 @@ struct MusicRowView: View {
     private var isPlaying: Bool { playingMusicID == music.id }
 
     private var videoID: String? {
-        guard let comp = URLComponents(string: music.link),
-              let v = comp.queryItems?.first(where: { $0.name == "v" })?.value,
-              !v.isEmpty
-        else { return nil }
-        return v
+        Self.youtubeID(from: music.link)
+    }
+
+    private static func youtubeID(from link: String) -> String? {
+        guard let comp = URLComponents(string: link) else { return nil }
+
+        if let host = comp.host, host.contains("youtu.be") {
+            let parts = comp.path.split(separator: "/").map(String.init)
+            return parts.first
+        }
+        if let host = comp.host, host.contains("youtube.com") {
+            if let v = comp.queryItems?.first(where: { $0.name == "v" })?.value, !v.isEmpty {
+                return v
+            }
+            let parts = comp.path.split(separator: "/").map(String.init)
+            if parts.count >= 2, parts[0].lowercased() == "shorts" {
+                return parts[1]
+            }
+        }
+        return nil
     }
 
     // MARK: - Colors tuned by theme
@@ -41,9 +56,7 @@ struct MusicRowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header row
             HStack(spacing: 16) {
-                // Left icon: visualizer when playing, otherwise static icon
                 if isPlaying {
                     AudioVisualizerView(barCount: 4, updateInterval: 0.15)
                         .frame(width: 30, height: 30)
@@ -53,7 +66,6 @@ struct MusicRowView: View {
                         .foregroundColor(theme.c.accentColor)
                 }
 
-                // Title, composer, and time range
                 VStack(alignment: .leading, spacing: 4) {
                     Text(music.title)
                         .font(.headline)
@@ -70,7 +82,6 @@ struct MusicRowView: View {
 
                 Spacer()
 
-                // Play/Pause button if videoID exists
                 if videoID != nil {
                     Button {
                         if isPlaying {
@@ -89,16 +100,13 @@ struct MusicRowView: View {
             }
             .padding(12)
 
-            // Expanded player area
             if isPlaying, let vid = videoID {
-                // Player
                 YouTubeInlinePlayerView(videoID: vid, start: music.start, end: music.end)
                     .cornerRadius(8)
                     .frame(height: 180)
                     .padding(.horizontal)
                     .transition(.opacity.combined(with: .move(edge: .top)))
 
-                // Select button at bottom-right, only when player is visible
                 if let onSelect = onSelect {
                     HStack {
                         Spacer()

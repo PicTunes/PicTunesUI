@@ -23,9 +23,7 @@ struct ContentView: View {
     @State private var analysisLabel: String? = nil
     @State private var musicList: [Music] = []
     @State private var similarItems: [SimilarItem] = []
-    // ContentView 或你的「合成」頁面頂部狀態區
     @State private var generatedVideoURL: URL? = nil
-
 
     // Playback state for recommendation list
     @State private var playingMusicID: UUID? = nil
@@ -33,7 +31,7 @@ struct ContentView: View {
     // The category user picked on Analysis page
     @State private var chosenSimilar: SimilarItem? = nil
 
-    // New: remember which track user selected for generation
+    // Remember which track user selected for generation
     @State private var chosenTrack: Music? = nil
 
     // Layout constants
@@ -44,7 +42,7 @@ struct ContentView: View {
         theme.kind == .anime ? .anime : .film
     }
 
-    // MARK: - Dynamic hint banners
+    // Dynamic hint banners
     private var contextHint: String? {
         switch selectedTab {
         case .upload:
@@ -78,7 +76,6 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Background gradient
             LinearGradient(
                 gradient: Gradient(colors: [
                     theme.c.backgroundTransition2,
@@ -92,7 +89,6 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.35), value: theme.kind)
 
             VStack(spacing: 10) {
-                // Domain segmented control
                 DomainToggle(
                     domain: Binding(
                         get: { currentDomain },
@@ -117,11 +113,9 @@ struct ContentView: View {
                 .padding(.bottom, 100)
             }
 
-            // Floating tab bar
             FloatingTabBar(selectedTab: $selectedTab)
                 .padding(.bottom, tabBarBottomPadding)
 
-            // Stacked hint pills above the tab bar
             if !bannersToShow.isEmpty {
                 VStack(spacing: 8) {
                     ForEach(bannersToShow, id: \.self) { msg in
@@ -144,7 +138,6 @@ struct ContentView: View {
             Text(lastErrorMessage ?? "")
         }
         .onChange(of: theme.kind) { _ in
-            // Reset states when switching domain
             musicList = []
             playingMusicID = nil
             chosenSimilar = nil
@@ -190,8 +183,10 @@ struct ContentView: View {
                     similarItems: similarItems,
                     debugText: PictunesService.shared.debugSummary,
                     onAnalyzeSimilar: { item in
+                        // 點按「推薦音樂」後，立即以該相似圖片做第二次辨認
                         self.chosenSimilar = item
                         self.selectedTab = .recommendation
+                        analyzeSecondPass(using: item)
                     }
                 )
 
@@ -223,8 +218,6 @@ struct ContentView: View {
                             music: track,
                             playingMusicID: $playingMusicID,
                             onSelect: { selected in
-                                // Keep your existing behavior: generate immediately,
-                                // but also remember which track user selected.
                                 chosenTrack = selected
                                 selectAndRender(track: selected)
                             }
@@ -248,12 +241,11 @@ struct ContentView: View {
                 .foregroundStyle(theme.c.pageTitleColor)
                 .padding(.top)
 
-            // >>> 新增：放在「標題」與「播放器」之間的卡片 <<<
             PreviewHeaderCard(
                 image: selectedImage,
                 categoryLabel: chosenSimilar?.label,
                 music: chosenTrack,
-                onGenerate: { regenerateFromPreview() } // tap to generate again
+                onGenerate: { regenerateFromPreview() }
             )
             .padding(.horizontal)
 
@@ -265,7 +257,6 @@ struct ContentView: View {
                 InstagramShareButton(media: .video(url))
                     .padding(.horizontal)
             } else if selectedImage != nil {
-                // Placeholder area for player
                 RoundedRectangle(cornerRadius: 16)
                     .fill(Color.black.opacity(0.85))
                     .frame(height: 280)
@@ -306,7 +297,8 @@ struct ContentView: View {
             switch result {
             case .success(let response):
                 self.analysisLabel = response.label
-                self.musicList = response.music
+                // 第一次辨認：服務端已幫你把 similarity >= 0.8 的 music_match 收集到 response.music
+                self.musicList = mergeAndDedupMusic(existing: [], new: response.music)
                 self.similarItems = response.similar ?? []
                 self.generatedVideoURL = response.videoUrl
             case .failure(let err):
@@ -319,38 +311,17 @@ struct ContentView: View {
         }
     }
 
-    /// Existing behavior: generate right after selecting a track on the recommendation page.
-    private func selectAndRender(track: Music) {
-        guard let img = selectedImage else {
-            lastErrorMessage = "尚未選擇圖片"
-            return
-        }
-
-        // 後端提供的遠端音檔連結（例如你們的 CDN、S3、或後端預處理後的 URL）
-        guard let audioURL = URL(string: track.link) else {
-            lastErrorMessage = "音檔連結無效"
-            return
-        }
-
+    private func analyzeSecondPass(using item: SimilarItem) {
         isUploading = true
         lastErrorMessage = nil
 
-        // domain 依你的切換狀態帶入
-        let domainToUse = currentDomain
-
-        PictunesService.shared.generateVideoUsingRemoteAudioURL(
-            image: img,
-            audioURL: audioURL,
-            start: track.start,
-            end: track.end,
-            domain: domainToUse
-        ) { (result: Result<URL, Error>) in
+        PictunesService.shared.analyzeUsingImageURL(item.imageUrl, domain: currentDomain) { result in
             DispatchQueue.main.async {
-                isUploading = false
+                self.isUploading = false
                 switch result {
-                case .success(let url):
-                    self.generatedVideoURL = url
-                    self.selectedTab = .preview
+                case .success(let resp):
+                    // 第二次辨認的高相似度音樂與第一次合併去重
+                    self.musicList = mergeAndDedupMusic(existing: self.musicList, new: resp.music)
                 case .failure(let err):
                     self.lastErrorMessage = err.localizedDescription
                 }
@@ -358,8 +329,63 @@ struct ContentView: View {
         }
     }
 
+    private func selectAndRender(track: Music) {
+        guard let img = selectedImage else {
+            lastErrorMessage = "尚未選擇圖片"
+            return
+        }
 
-    /// New: re-generate from preview page card
+        isUploading = true
+        lastErrorMessage = nil
+        let domainToUse = currentDomain
+
+        if let mid = track.backendMusicID {
+            // 新後端：圖片 + music_id
+            PictunesService.shared.generateVideoUsingMusicID(
+                image: img,
+                musicID: mid,
+                start: track.start,
+                end: track.end,
+                domain: domainToUse
+            ) { (result: Result<URL, Error>) in
+                DispatchQueue.main.async {
+                    isUploading = false
+                    switch result {
+                    case .success(let url):
+                        self.generatedVideoURL = url
+                        self.selectedTab = .preview
+                    case .failure(let err):
+                        self.lastErrorMessage = err.localizedDescription
+                    }
+                }
+            }
+        } else if let audioURL = URL(string: track.link), !track.link.isEmpty {
+            // 舊相容：若沒有 music_id，退回以 audio_url 合成
+            PictunesService.shared.generateVideoUsingRemoteAudioURL(
+                image: img,
+                audioURL: audioURL,
+                start: track.start,
+                end: track.end,
+                domain: domainToUse
+            ) { (result: Result<URL, Error>) in
+                DispatchQueue.main.async {
+                    isUploading = false
+                    switch result {
+                    case .success(let url):
+                        self.generatedVideoURL = url
+                        self.selectedTab = .preview
+                    case .failure(let err):
+                        self.lastErrorMessage = err.localizedDescription
+                    }
+                }
+            }
+        } else {
+            isUploading = false
+            lastErrorMessage = "此曲目缺少 music_id 與可用連結，無法合成"
+        }
+    }
+
+
     private func regenerateFromPreview() {
         guard let track = chosenTrack else {
             lastErrorMessage = "尚未選擇音樂"
@@ -368,15 +394,40 @@ struct ContentView: View {
         selectAndRender(track: track)
     }
 
-    // MARK: - Helpers
+    // Merge and dedup helper
+    private func mergeAndDedupMusic(existing: [Music], new: [Music]) -> [Music] {
+        var set = Set<String>()
+        var out: [Music] = []
+
+        func key(_ m: Music) -> String {
+            if let id = m.backendMusicID { return "id:\(id)" }
+            return "\(m.title)|\(m.composer)|\(m.link)|\(m.start)-\(m.end)"
+        }
+
+        for m in existing {
+            let k = key(m)
+            if !set.contains(k) {
+                set.insert(k)
+                out.append(m)
+            }
+        }
+        for m in new {
+            let k = key(m)
+            if !set.contains(k) {
+                set.insert(k)
+                out.append(m)
+            }
+        }
+        return out
+    }
+
+
     private var domainTitle: String {
         switch currentDomain {
         case .anime: return "動漫"
         case .film:  return "電影"
         }
     }
-    
-    
 }
 
 // MARK: - Domain segmented toggle
@@ -409,9 +460,6 @@ private struct DomainToggle: View {
     }
 }
 
-//
-// MARK: - Hint pill component
-//
 private struct HintPill: View {
     let text: String
     var body: some View {
@@ -427,7 +475,7 @@ private struct HintPill: View {
     }
 }
 
-//
+// ChosenCategoryCard 同原檔，已在專案內
 
 
 // MARK: - Inline ChosenCategoryCard

@@ -203,29 +203,4 @@ struct PreviewHeaderCard: View {
     }
 }
 
-#if DEBUG
-struct PreviewHeaderCard_Previews: PreviewProvider {
-    static var previews: some View {
-        let sample = Music(
-            title: "Clair de Lune",
-            composer: "Debussy",
-            start: 30, end: 60,
-            link: "https://www.youtube.com/watch?v=CvFH_6DNRCY"
-        )
 
-        ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            VStack {
-                PreviewHeaderCard(
-                    image: UIImage(systemName: "photo")?.withTintColor(.white, renderingMode: .alwaysOriginal),
-                    categoryLabel: "sunset",
-                    music: sample,
-                    onGenerate: {}
-                )
-                .padding()
-                Spacer()
-            }
-        }
-    }
-}
-#endif
