@@ -150,7 +150,7 @@ struct ContentView: View {
     private var uploadView: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Text("PicTunes：上傳（\(domainTitle)）")
+                Text("PicTunes：上傳")
                     .font(.title).bold()
                     .foregroundStyle(theme.c.pageTitleColor)
                     .padding(.top)
@@ -173,7 +173,7 @@ struct ContentView: View {
     private var analysisView: some View {
         ScrollView {
             VStack(spacing: 20) {
-                Text("PicTunes：圖片辨認（\(domainTitle)）")
+                Text("PicTunes：圖片辨認")
                     .font(.title).bold()
                     .foregroundStyle(theme.c.pageTitleColor)
                     .padding(.top)
@@ -198,7 +198,7 @@ struct ContentView: View {
     // MARK: - Recommendation tab
     private var recommendationView: some View {
         VStack(spacing: 16) {
-            Text("PicTunes：推薦（\(domainTitle)）")
+            Text("PicTunes：推薦")
                 .font(.title).bold()
                 .foregroundStyle(theme.c.pageTitleColor)
                 .padding(.top)
@@ -236,7 +236,7 @@ struct ContentView: View {
     // MARK: - Preview tab
     private var previewView: some View {
         VStack(spacing: 16) {
-            Text("PicTunes：預覽（\(domainTitle)）")
+            Text("PicTunes：預覽")
                 .font(.title).bold()
                 .foregroundStyle(theme.c.pageTitleColor)
                 .padding(.top)
@@ -474,8 +474,6 @@ private struct HintPill: View {
             .accessibilityLabel(text)
     }
 }
-
-// ChosenCategoryCard 同原檔，已在專案內
 
 
 // MARK: - Inline ChosenCategoryCard
