@@ -1,7 +1,18 @@
-// ContentView.swift
 import SwiftUI
 import PhotosUI
 import AVKit
+
+// 用來統一管理目前畫面要顯示哪一種 Alert
+struct ActiveAlert: Identifiable {
+    enum Kind {
+        case error
+        case generating
+    }
+
+    let id = UUID()
+    let kind: Kind
+    let message: String
+}
 
 struct ContentView: View {
     
@@ -18,6 +29,9 @@ struct ContentView: View {
     @State private var isUploading = false
     @State private var showMockBanner = false
     @State private var lastErrorMessage: String? = nil
+
+    // 新增：統一彈出 Alert 的狀態
+    @State private var activeAlert: ActiveAlert? = nil
 
     // Server-driven data
     @State private var analysisLabel: String? = nil
@@ -129,13 +143,24 @@ struct ContentView: View {
         }
         .background(theme.c.background)
         .edgesIgnoringSafeArea(.bottom)
-        .alert("辨認失敗", isPresented: Binding(
-            get: { lastErrorMessage != nil },
-            set: { _ in lastErrorMessage = nil }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(lastErrorMessage ?? "")
+        // 改成用 item 型別的 alert，同時支援「錯誤」與「生成中」兩種情境
+        .alert(item: $activeAlert) { alert in
+            switch alert.kind {
+            case .error:
+                return Alert(
+                    title: Text("辨認失敗"),
+                    message: Text(alert.message),
+                    dismissButton: .default(Text("OK")) {
+                        lastErrorMessage = nil
+                    }
+                )
+            case .generating:
+                return Alert(
+                    title: Text("目前已選擇「\(alert.message)」"),
+                    message: Text("請稍後影片生成！"),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
         }
         .onChange(of: theme.kind) { _ in
             musicList = []
@@ -150,7 +175,7 @@ struct ContentView: View {
     private var uploadView: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Text("PicTunes：上傳")
+                Text("PicTunes：上傳（\(domainTitle)）")
                     .font(.title).bold()
                     .foregroundStyle(theme.c.pageTitleColor)
                     .padding(.top)
@@ -173,7 +198,7 @@ struct ContentView: View {
     private var analysisView: some View {
         ScrollView {
             VStack(spacing: 20) {
-                Text("PicTunes：圖片辨認")
+                Text("PicTunes：圖片辨認（\(domainTitle)）")
                     .font(.title).bold()
                     .foregroundStyle(theme.c.pageTitleColor)
                     .padding(.top)
@@ -198,7 +223,7 @@ struct ContentView: View {
     // MARK: - Recommendation tab
     private var recommendationView: some View {
         VStack(spacing: 16) {
-            Text("PicTunes：推薦")
+            Text("PicTunes：推薦（\(domainTitle)）")
                 .font(.title).bold()
                 .foregroundStyle(theme.c.pageTitleColor)
                 .padding(.top)
@@ -218,7 +243,14 @@ struct ContentView: View {
                             music: track,
                             playingMusicID: $playingMusicID,
                             onSelect: { selected in
+                                // 使用者按下推薦列表裡的「選擇」
                                 chosenTrack = selected
+                                // 顯示「目前已選擇」系統 Alert
+                                activeAlert = ActiveAlert(
+                                    kind: .generating,
+                                    message: selected.title
+                                )
+                                // 照原本流程開始向後端請求合成影片
                                 selectAndRender(track: selected)
                             }
                         )
@@ -236,7 +268,7 @@ struct ContentView: View {
     // MARK: - Preview tab
     private var previewView: some View {
         VStack(spacing: 16) {
-            Text("PicTunes：預覽")
+            Text("PicTunes：預覽（\(domainTitle)）")
                 .font(.title).bold()
                 .foregroundStyle(theme.c.pageTitleColor)
                 .padding(.top)
@@ -297,16 +329,25 @@ struct ContentView: View {
             switch result {
             case .success(let response):
                 self.analysisLabel = response.label
-                // 第一次辨認：服務端已幫你把 similarity >= 0.8 的 music_match 收集到 response.music
                 self.musicList = mergeAndDedupMusic(existing: [], new: response.music)
-                self.similarItems = response.similar ?? []
+                self.similarItems = (response.similar ?? []).sorted { a, b in
+                    if a.score == b.score {
+                        let al = a.label ?? a.filename ?? ""
+                        let bl = b.label ?? b.filename ?? ""
+                        return al < bl
+                    }
+                    return a.score > b.score
+                }
+
                 self.generatedVideoURL = response.videoUrl
             case .failure(let err):
                 self.analysisLabel = "辨認錯誤"
                 self.musicList = []
                 self.similarItems = []
                 self.generatedVideoURL = nil
-                self.lastErrorMessage = err.localizedDescription
+                let msg = err.localizedDescription
+                self.lastErrorMessage = msg
+                self.activeAlert = ActiveAlert(kind: .error, message: msg)
             }
         }
     }
@@ -320,10 +361,11 @@ struct ContentView: View {
                 self.isUploading = false
                 switch result {
                 case .success(let resp):
-                    // 第二次辨認的高相似度音樂與第一次合併去重
                     self.musicList = mergeAndDedupMusic(existing: self.musicList, new: resp.music)
                 case .failure(let err):
-                    self.lastErrorMessage = err.localizedDescription
+                    let msg = err.localizedDescription
+                    self.lastErrorMessage = msg
+                    self.activeAlert = ActiveAlert(kind: .error, message: msg)
                 }
             }
         }
@@ -331,7 +373,9 @@ struct ContentView: View {
 
     private func selectAndRender(track: Music) {
         guard let img = selectedImage else {
-            lastErrorMessage = "尚未選擇圖片"
+            let msg = "尚未選擇圖片"
+            lastErrorMessage = msg
+            activeAlert = ActiveAlert(kind: .error, message: msg)
             return
         }
 
@@ -355,7 +399,9 @@ struct ContentView: View {
                         self.generatedVideoURL = url
                         self.selectedTab = .preview
                     case .failure(let err):
-                        self.lastErrorMessage = err.localizedDescription
+                        let msg = err.localizedDescription
+                        self.lastErrorMessage = msg
+                        self.activeAlert = ActiveAlert(kind: .error, message: msg)
                     }
                 }
             }
@@ -375,22 +421,29 @@ struct ContentView: View {
                         self.generatedVideoURL = url
                         self.selectedTab = .preview
                     case .failure(let err):
-                        self.lastErrorMessage = err.localizedDescription
+                        let msg = err.localizedDescription
+                        self.lastErrorMessage = msg
+                        self.activeAlert = ActiveAlert(kind: .error, message: msg)
                     }
                 }
             }
         } else {
             isUploading = false
-            lastErrorMessage = "此曲目缺少 music_id 與可用連結，無法合成"
+            let msg = "此曲目缺少 music_id 與可用連結，無法合成"
+            lastErrorMessage = msg
+            activeAlert = ActiveAlert(kind: .error, message: msg)
         }
     }
 
-
     private func regenerateFromPreview() {
         guard let track = chosenTrack else {
-            lastErrorMessage = "尚未選擇音樂"
+            let msg = "尚未選擇音樂"
+            lastErrorMessage = msg
+            activeAlert = ActiveAlert(kind: .error, message: msg)
             return
         }
+        // 從預覽頁重新合成時，也給一樣的提醒
+        activeAlert = ActiveAlert(kind: .generating, message: track.title)
         selectAndRender(track: track)
     }
 
@@ -420,7 +473,6 @@ struct ContentView: View {
         }
         return out
     }
-
 
     private var domainTitle: String {
         switch currentDomain {
@@ -475,9 +527,7 @@ private struct HintPill: View {
     }
 }
 
-
 // MARK: - Inline ChosenCategoryCard
-//
 struct ChosenCategoryCard: View {
     @EnvironmentObject var theme: ThemeStore
     let item: SimilarItem
