@@ -99,11 +99,11 @@ Tech Stack
 
 | Upload | Analysis |
 |---|---|
-| ![Upload](docs/screensshots/upload.png) | ![Analysis](docs/screensshots/analysis.png) |
+| ![Upload](docs/screenshots/upload.png) | ![Analysis](docs/screenshots/analysis.png) |
 
 | Recommendation | Preview |
 |---|---|
-| ![Recommendation](docs/screensshots/recommendation.png) | ![Preview](docs/screensshots/preview.png) |
+| ![Recommendation](docs/screenshots/recommendation.png) | ![Preview](docs/screenshots/preview.png) |
 
 Repository Structure
 ```PicTunesUI/
