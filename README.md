@@ -119,16 +119,25 @@ PicTunesUI 支援兩種推薦資料庫：
 
 ```text
 PicTunesUI/
-├── PicTunesApp.swift
-├── ContentView.swift
-├── PictunesCore.swift
-├── FloatingTabBar.swift
-├── UploadSectionView.swift
-├── AnalysisSectionView.swift
-├── RecommendationSectionView.swift
-├── MusicRowView.swift
-├── YouTubeInlinePlayerView.swift
-├── VideoPreviewPage.swift
-├── IGshareButton.swift
-└── README.md
+├── README.md
+├── docs/
+│   └── screenshots/
+│       ├── upload.png
+│       ├── analysis.png
+│       ├── recommendation.png
+│       └── preview.png
+├── Core/
+│   └── PictunesCore.swift
+└── UI/
+    ├── PictunesApp.swift
+    ├── ContentView.swift
+    ├── FloatingTabBar.swift
+    ├── UploadSectionView.swift
+    ├── AnalysisSectionView.swift
+    ├── RecommendationSectionView.swift
+    ├── MusicRowView.swift
+    ├── YouTubeInlinePlayerView.swift
+    ├── VideoPreviewPage.swift
+    └── IGshareButton.swift
 ```
+
