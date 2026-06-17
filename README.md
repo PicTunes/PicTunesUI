@@ -25,63 +25,73 @@ iOS App 將圖片送至 PicTunes API
         ↓
 iOS App 預覽影片並分享到 Instagram Stories
 ```
+
 ## Features
+
 ### Image Upload
 
 使用者可以從相簿選擇圖片，並透過前端介面送出圖片分析請求。
 
 主要功能：
-- 使用 PhotosUI 選擇本機圖片
-- 顯示使用者已選擇的圖片預覽
-- 將圖片以 multipart/form-data 格式傳送至後端 API
-- 顯示上傳與辨認狀態
+
+* 使用 PhotosUI 選擇本機圖片
+* 顯示使用者已選擇的圖片預覽
+* 將圖片以 multipart/form-data 格式傳送至後端 API
+* 顯示上傳與辨認狀態
 
 ### Image Analysis Result
 
 後端完成圖片分析後，前端會顯示相似圖片與圖片標籤。
 
 主要功能：
-- 顯示使用者上傳的圖片
-- 顯示後端回傳的相似圖片列表
-- 顯示圖片標籤與相似度
-- 支援點選相似圖片類別，進入推薦音樂流程
+
+* 顯示使用者上傳的圖片
+* 顯示後端回傳的相似圖片列表
+* 顯示圖片標籤與相似度
+* 支援點選相似圖片類別，進入推薦音樂流程
 
 ### Music Recommendation
 
 根據圖片辨認結果，前端會顯示推薦音樂清單。
 
 主要功能：
-- 顯示推薦音樂名稱
-- 顯示作曲家資訊
-- 顯示音樂片段起訖時間
-- 支援 YouTube 內嵌試聽
-- 支援單一音樂播放狀態管理
-- 選擇音樂後進入影片合成流程
-  
+
+* 顯示推薦音樂名稱
+* 顯示作曲家資訊
+* 顯示音樂片段起訖時間
+* 支援 YouTube 內嵌試聽
+* 支援單一音樂播放狀態管理
+* 選擇音樂後進入影片合成流程
+
 ### Video Preview
 
 使用者選擇音樂後，前端會呼叫後端影片合成 API，並顯示合成後的短影片。
 
 主要功能：
-- 顯示已選擇圖片、圖片類別與音樂資訊
-- 預覽後端回傳的 MP4 影片
-- 支援重新合成影片
-- 支援影片分享到 Instagram Stories
-- Anime / Film Domain Switch
 
-### PicTunesUI 支援兩種推薦資料庫：
+* 顯示已選擇圖片、圖片類別與音樂資訊
+* 預覽後端回傳的 MP4 影片
+* 支援重新合成影片
+* 支援影片分享到 Instagram Stories
 
-- Anime：動漫與動畫配樂資料庫
-- Film：電影配樂資料庫
+### Anime / Film Domain Switch
+
+PicTunesUI 支援兩種推薦資料庫：
+
+* Anime：動漫與動畫配樂資料庫
+* Film：電影配樂資料庫
+
 使用者可以在 App 上方切換推薦資料庫，前端會依照使用者選擇的 domain 呼叫後端 API。
 
 ### Theme System
 
 前端設計 Anime 與 Film 兩種視覺主題，切換資料庫時會同步改變介面配色。
-- Anime 主題：偏明亮、柔和、動畫風格
-- Film 主題：偏深色、金色、劇院風格
+
+* Anime 主題：偏明亮、柔和、動畫風格
+* Film 主題：偏深色、金色、劇院風格
 
 ## Tech Stack
+
 | Category         | Technology                                 |
 | ---------------- | ------------------------------------------ |
 | Platform         | iOS                                        |
@@ -97,16 +107,18 @@ iOS App 預覽影片並分享到 Instagram Stories
 
 ## App Screenshots
 
-| Upload | Analysis |
-|---|---|
+| Upload                                 | Analysis                                   |
+| -------------------------------------- | ------------------------------------------ |
 | ![Upload](docs/screenshots/upload.png) | ![Analysis](docs/screenshots/analysis.png) |
 
-| Recommendation | Preview |
-|---|---|
+| Recommendation                                         | Preview                                  |
+| ------------------------------------------------------ | ---------------------------------------- |
 | ![Recommendation](docs/screenshots/recommendation.png) | ![Preview](docs/screenshots/preview.png) |
 
 ## Repository Structure
-```PicTunesUI/
+
+```text
+PicTunesUI/
 ├── PicTunesApp.swift
 ├── ContentView.swift
 ├── PictunesCore.swift
