@@ -25,8 +25,8 @@ iOS App 將圖片送至 PicTunes API
         ↓
 iOS App 預覽影片並分享到 Instagram Stories
 ```
-Features
-Image Upload
+## Features
+### Image Upload
 
 使用者可以從相簿選擇圖片，並透過前端介面送出圖片分析請求。
 
@@ -36,7 +36,7 @@ Image Upload
 - 將圖片以 multipart/form-data 格式傳送至後端 API
 - 顯示上傳與辨認狀態
 
-Image Analysis Result
+### Image Analysis Result
 
 後端完成圖片分析後，前端會顯示相似圖片與圖片標籤。
 
@@ -46,7 +46,7 @@ Image Analysis Result
 - 顯示圖片標籤與相似度
 - 支援點選相似圖片類別，進入推薦音樂流程
 
-Music Recommendation
+### Music Recommendation
 
 根據圖片辨認結果，前端會顯示推薦音樂清單。
 
@@ -58,7 +58,7 @@ Music Recommendation
 - 支援單一音樂播放狀態管理
 - 選擇音樂後進入影片合成流程
   
-Video Preview
+### Video Preview
 
 使用者選擇音樂後，前端會呼叫後端影片合成 API，並顯示合成後的短影片。
 
@@ -69,19 +69,19 @@ Video Preview
 - 支援影片分享到 Instagram Stories
 - Anime / Film Domain Switch
 
-PicTunesUI 支援兩種推薦資料庫：
+### PicTunesUI 支援兩種推薦資料庫：
 
 - Anime：動漫與動畫配樂資料庫
 - Film：電影配樂資料庫
 使用者可以在 App 上方切換推薦資料庫，前端會依照使用者選擇的 domain 呼叫後端 API。
 
-Theme System
+### Theme System
 
 前端設計 Anime 與 Film 兩種視覺主題，切換資料庫時會同步改變介面配色。
 - Anime 主題：偏明亮、柔和、動畫風格
 - Film 主題：偏深色、金色、劇院風格
 
-Tech Stack
+## Tech Stack
 | Category         | Technology                                 |
 | ---------------- | ------------------------------------------ |
 | Platform         | iOS                                        |
@@ -105,7 +105,7 @@ Tech Stack
 |---|---|
 | ![Recommendation](docs/screenshots/recommendation.png) | ![Preview](docs/screenshots/preview.png) |
 
-Repository Structure
+## Repository Structure
 ```PicTunesUI/
 ├── PicTunesApp.swift
 ├── ContentView.swift
