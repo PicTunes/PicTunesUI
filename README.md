@@ -95,7 +95,15 @@ Tech Stack
 | API Format       | REST API, multipart/form-data              |
 | Sharing          | UIPasteboard, Instagram Stories URL Scheme |
 
-App Screenshots
+## App Screenshots
+
+| Upload | Analysis |
+|---|---|
+| ![Upload](docs/screensshots/upload.png) | ![Analysis](docs/screensshots/analysis.png) |
+
+| Recommendation | Preview |
+|---|---|
+| ![Recommendation](docs/screensshots/recommendation.png) | ![Preview](docs/screensshots/preview.png) |
 
 Repository Structure
 ```PicTunesUI/
